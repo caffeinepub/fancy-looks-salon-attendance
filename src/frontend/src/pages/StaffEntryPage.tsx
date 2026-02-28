@@ -22,11 +22,15 @@ import {
   SelectValue,
 } from "../components/ui/select";
 import { Skeleton } from "../components/ui/skeleton";
-import { useLocalStaff } from "../hooks/useLocalStaff";
+import { type LocalStaff, useLocalStaff } from "../hooks/useLocalStaff";
 import { useSubmitInTime, useSubmitOutTime } from "../hooks/useQueries";
 
 function getTodayStr() {
-  return new Date().toISOString().split("T")[0];
+  const now = new Date();
+  const y = now.getFullYear();
+  const m = String(now.getMonth() + 1).padStart(2, "0");
+  const d = String(now.getDate()).padStart(2, "0");
+  return `${y}-${m}-${d}`;
 }
 
 function formatDateFull(dateStr: string) {
@@ -84,6 +88,8 @@ export function StaffEntryPage() {
   const [error, setError] = useState("");
   const [submitted, setSubmitted] = useState(false);
 
+  const regularStaff = staff?.filter((s) => !s.isPremium) ?? [];
+
   // Update live clock every 30 seconds
   useEffect(() => {
     const interval = setInterval(() => {
@@ -92,7 +98,9 @@ export function StaffEntryPage() {
     return () => clearInterval(interval);
   }, []);
 
-  const selectedStaff = staff?.find((s) => String(s.id) === selectedStaffId);
+  const selectedStaff = regularStaff.find(
+    (s) => String(s.id) === selectedStaffId,
+  ) as LocalStaff | undefined;
 
   // Determine if current time is late based on entry type
   const isCurrentlyLate = selectedStaff
@@ -246,13 +254,16 @@ export function StaffEntryPage() {
                       <SelectTrigger className="h-11 border-border focus:border-salon-rose">
                         <SelectValue placeholder="Choose your name..." />
                       </SelectTrigger>
-                      <SelectContent>
-                        {!staff || staff.length === 0 ? (
+                      <SelectContent
+                        position="popper"
+                        className="max-h-60 overflow-y-auto"
+                      >
+                        {regularStaff.length === 0 ? (
                           <div className="p-3 text-center text-sm text-muted-foreground">
                             No staff found. Contact admin.
                           </div>
                         ) : (
-                          staff.map((s) => (
+                          regularStaff.map((s) => (
                             <SelectItem key={String(s.id)} value={String(s.id)}>
                               <span className="flex items-center gap-2">
                                 <span className="h-6 w-6 rounded-full bg-salon-rose-light text-salon-rose-deep text-xs font-bold inline-flex items-center justify-center">

@@ -2,6 +2,7 @@ import { Link, useLocation } from "@tanstack/react-router";
 import {
   BarChart2,
   ClipboardList,
+  Crown,
   LogIn,
   LogOut,
   Menu,
@@ -27,6 +28,12 @@ export function SalonHeader({ isAdmin, onLogout }: SalonHeaderProps) {
       to: "/staff-entry",
       label: "Staff Entry",
       icon: <ClipboardList size={16} />,
+      alwaysShow: true,
+    },
+    {
+      to: "/premium-staff",
+      label: "Premium Staff",
+      icon: <Crown size={16} />,
       alwaysShow: true,
     },
     {

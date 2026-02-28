@@ -12,6 +12,7 @@ import { SalonHeader } from "./components/salon/SalonHeader";
 import { AdminDashboard } from "./pages/AdminDashboard";
 import { AdminLoginPage } from "./pages/AdminLoginPage";
 import { HomePage } from "./pages/HomePage";
+import { PremiumStaffPage } from "./pages/PremiumStaffPage";
 import { ReportsPage } from "./pages/ReportsPage";
 import { StaffEntryPage } from "./pages/StaffEntryPage";
 
@@ -95,12 +96,19 @@ const reportsRoute = createRoute({
   component: ReportsPage,
 });
 
+const premiumStaffRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/premium-staff",
+  component: PremiumStaffPage,
+});
+
 const routeTree = rootRoute.addChildren([
   indexRoute,
   adminLoginRoute,
   adminRoute,
   staffEntryRoute,
   reportsRoute,
+  premiumStaffRoute,
 ]);
 
 const router = createRouter({ routeTree });

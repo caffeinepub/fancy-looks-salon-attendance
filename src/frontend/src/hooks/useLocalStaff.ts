@@ -14,6 +14,12 @@ import type { Staff } from "../backend.d";
 
 const STORAGE_KEY = "salonStaff";
 
+// ── Extended Staff type with isPremium ─────────────────────────────────────────
+
+export interface LocalStaff extends Staff {
+  isPremium?: boolean;
+}
+
 // ── Serialization helpers ──────────────────────────────────────────────────────
 
 interface SerializedTimeOfDay {
@@ -26,9 +32,10 @@ interface SerializedStaff {
   name: string;
   scheduledInTime: SerializedTimeOfDay;
   scheduledOutTime: SerializedTimeOfDay;
+  isPremium?: boolean;
 }
 
-function deserializeStaff(s: SerializedStaff): Staff {
+function deserializeStaff(s: SerializedStaff): LocalStaff {
   return {
     id: BigInt(s.id),
     name: s.name,
@@ -40,10 +47,11 @@ function deserializeStaff(s: SerializedStaff): Staff {
       hour: BigInt(s.scheduledOutTime.hour),
       minute: BigInt(s.scheduledOutTime.minute),
     },
+    isPremium: s.isPremium ?? false,
   };
 }
 
-function serializeStaff(s: Staff): SerializedStaff {
+function serializeStaff(s: LocalStaff): SerializedStaff {
   return {
     id: String(s.id),
     name: s.name,
@@ -55,10 +63,11 @@ function serializeStaff(s: Staff): SerializedStaff {
       hour: String(s.scheduledOutTime.hour),
       minute: String(s.scheduledOutTime.minute),
     },
+    isPremium: s.isPremium ?? false,
   };
 }
 
-function readFromStorage(): Staff[] {
+function readFromStorage(): LocalStaff[] {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (!raw) return [];
@@ -69,12 +78,12 @@ function readFromStorage(): Staff[] {
   }
 }
 
-function writeToStorage(staffList: Staff[]): void {
+function writeToStorage(staffList: LocalStaff[]): void {
   const serialized = staffList.map(serializeStaff);
   localStorage.setItem(STORAGE_KEY, JSON.stringify(serialized));
 }
 
-function getNextId(staffList: Staff[]): bigint {
+function getNextId(staffList: LocalStaff[]): bigint {
   if (staffList.length === 0) return BigInt(1);
   const maxId = staffList.reduce(
     (max, s) => (s.id > max ? s.id : max),
@@ -91,6 +100,7 @@ export interface AddStaffParams {
   inMinute: number;
   outHour: number;
   outMinute: number;
+  isPremium?: boolean;
 }
 
 export interface UpdateStaffTimesParams {
@@ -102,7 +112,7 @@ export interface UpdateStaffTimesParams {
 }
 
 export function useLocalStaff() {
-  const [staff, setStaff] = useState<Staff[]>(() => {
+  const [staff, setStaff] = useState<LocalStaff[]>(() => {
     const loaded = readFromStorage();
     // Sort by id ascending
     return [...loaded].sort((a, b) => (a.id < b.id ? -1 : 1));
@@ -121,9 +131,16 @@ export function useLocalStaff() {
   }, []);
 
   const addStaff = useCallback(
-    ({ name, inHour, inMinute, outHour, outMinute }: AddStaffParams): Staff => {
+    ({
+      name,
+      inHour,
+      inMinute,
+      outHour,
+      outMinute,
+      isPremium,
+    }: AddStaffParams): LocalStaff => {
       const current = readFromStorage();
-      const newStaff: Staff = {
+      const newStaff: LocalStaff = {
         id: getNextId(current),
         name: name.trim(),
         scheduledInTime: {
@@ -134,6 +151,7 @@ export function useLocalStaff() {
           hour: BigInt(outHour),
           minute: BigInt(outMinute),
         },
+        isPremium: isPremium ?? false,
       };
       const updated = [...current, newStaff].sort((a, b) =>
         a.id < b.id ? -1 : 1,
@@ -185,11 +203,24 @@ export function useLocalStaff() {
     [],
   );
 
+  const togglePremium = useCallback((staffId: bigint): void => {
+    const current = readFromStorage();
+    const updated = current
+      .map((s) => {
+        if (s.id !== staffId) return s;
+        return { ...s, isPremium: !s.isPremium };
+      })
+      .sort((a, b) => (a.id < b.id ? -1 : 1));
+    writeToStorage(updated);
+    setStaff(updated);
+  }, []);
+
   return {
     staff,
     isLoading: false,
     addStaff,
     removeStaff,
     updateStaffTimes,
+    togglePremium,
   };
 }

@@ -1,6 +1,7 @@
 import {
   ChevronRight,
   Clock,
+  Crown,
   Pencil,
   Trash2,
   User,
@@ -8,7 +9,6 @@ import {
   Users,
 } from "lucide-react";
 import { useState } from "react";
-import type { Staff } from "../../backend.d";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -20,6 +20,7 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "../../components/ui/alert-dialog";
+import { Badge } from "../../components/ui/badge";
 import { Button } from "../../components/ui/button";
 import {
   Dialog,
@@ -31,6 +32,7 @@ import {
 } from "../../components/ui/dialog";
 import { Input } from "../../components/ui/input";
 import { Label } from "../../components/ui/label";
+import type { LocalStaff } from "../../hooks/useLocalStaff";
 import {
   type UpdateStaffTimesParams,
   useLocalStaff,
@@ -50,7 +52,7 @@ function EditStaffDialog({
   onUpdate,
   onClose,
 }: {
-  staff: Staff;
+  staff: LocalStaff;
   onUpdate: (params: UpdateStaffTimesParams) => void;
   onClose: () => void;
 }) {
@@ -139,10 +141,11 @@ function EditStaffDialog({
 }
 
 export function StaffManagementTab() {
-  const { staff, addStaff, removeStaff, updateStaffTimes } = useLocalStaff();
+  const { staff, addStaff, removeStaff, updateStaffTimes, togglePremium } =
+    useLocalStaff();
 
   const [addOpen, setAddOpen] = useState(false);
-  const [editStaff, setEditStaff] = useState<Staff | null>(null);
+  const [editStaff, setEditStaff] = useState<LocalStaff | null>(null);
   const [newName, setNewName] = useState("");
   const [newInTime, setNewInTime] = useState("09:00");
   const [newOutTime, setNewOutTime] = useState("18:00");
@@ -315,59 +318,93 @@ export function StaffManagementTab() {
 
               {/* Info */}
               <div className="flex-1 min-w-0">
-                <div className="font-medium text-foreground truncate">
-                  {s.name}
+                <div className="flex items-center gap-2">
+                  <div className="font-medium text-foreground truncate">
+                    {s.name}
+                  </div>
+                  {s.isPremium && (
+                    <Badge className="bg-salon-gold/20 text-salon-charcoal border-salon-gold/30 gap-1 text-[10px] px-1.5 py-0">
+                      <Crown size={9} className="text-salon-gold" />
+                      Premium
+                    </Badge>
+                  )}
                 </div>
-                <div className="flex items-center gap-3 mt-0.5 text-xs text-muted-foreground">
-                  <span className="flex items-center gap-1">
-                    <Clock size={11} className="text-salon-gold" />
-                    In:{" "}
-                    <strong className="text-foreground">
-                      {padTime(
-                        Number(s.scheduledInTime.hour),
-                        Number(s.scheduledInTime.minute),
-                      )}
-                    </strong>
-                  </span>
-                  <ChevronRight size={11} className="text-border" />
-                  <span className="flex items-center gap-1">
-                    <Clock size={11} className="text-salon-rose" />
-                    Out:{" "}
-                    <strong className="text-foreground">
-                      {padTime(
-                        Number(s.scheduledOutTime.hour),
-                        Number(s.scheduledOutTime.minute),
-                      )}
-                    </strong>
-                  </span>
-                </div>
+                {s.isPremium ? (
+                  <div className="flex items-center gap-1 mt-0.5 text-xs text-salon-gold">
+                    <Crown size={10} />
+                    <span>No time tracking required</span>
+                  </div>
+                ) : (
+                  <div className="flex items-center gap-3 mt-0.5 text-xs text-muted-foreground">
+                    <span className="flex items-center gap-1">
+                      <Clock size={11} className="text-salon-gold" />
+                      In:{" "}
+                      <strong className="text-foreground">
+                        {padTime(
+                          Number(s.scheduledInTime.hour),
+                          Number(s.scheduledInTime.minute),
+                        )}
+                      </strong>
+                    </span>
+                    <ChevronRight size={11} className="text-border" />
+                    <span className="flex items-center gap-1">
+                      <Clock size={11} className="text-salon-rose" />
+                      Out:{" "}
+                      <strong className="text-foreground">
+                        {padTime(
+                          Number(s.scheduledOutTime.hour),
+                          Number(s.scheduledOutTime.minute),
+                        )}
+                      </strong>
+                    </span>
+                  </div>
+                )}
               </div>
 
               {/* Actions */}
               <div className="flex items-center gap-2 flex-shrink-0">
-                <Dialog
-                  open={editStaff?.id === s.id}
-                  onOpenChange={(open) => !open && setEditStaff(null)}
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  onClick={() => togglePremium(s.id)}
+                  title={s.isPremium ? "Remove Premium" : "Mark as Premium"}
+                  className={`gap-1.5 h-8 ${
+                    s.isPremium
+                      ? "text-salon-gold hover:text-salon-charcoal hover:bg-salon-gold/10"
+                      : "text-muted-foreground hover:text-salon-gold hover:bg-salon-gold/10"
+                  }`}
                 >
-                  <DialogTrigger asChild>
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      onClick={() => setEditStaff(s)}
-                      className="gap-1.5 text-muted-foreground hover:text-salon-rose hover:bg-salon-rose-light/50 h-8"
-                    >
-                      <Pencil size={13} />
-                      <span className="hidden sm:inline">Edit</span>
-                    </Button>
-                  </DialogTrigger>
-                  {editStaff?.id === s.id && (
-                    <EditStaffDialog
-                      staff={editStaff}
-                      onUpdate={updateStaffTimes}
-                      onClose={() => setEditStaff(null)}
-                    />
-                  )}
-                </Dialog>
+                  <Crown size={13} />
+                  <span className="hidden sm:inline">
+                    {s.isPremium ? "Unset" : "Premium"}
+                  </span>
+                </Button>
+
+                {!s.isPremium && (
+                  <Dialog
+                    open={editStaff?.id === s.id}
+                    onOpenChange={(open) => !open && setEditStaff(null)}
+                  >
+                    <DialogTrigger asChild>
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        onClick={() => setEditStaff(s)}
+                        className="gap-1.5 text-muted-foreground hover:text-salon-rose hover:bg-salon-rose-light/50 h-8"
+                      >
+                        <Pencil size={13} />
+                        <span className="hidden sm:inline">Edit</span>
+                      </Button>
+                    </DialogTrigger>
+                    {editStaff?.id === s.id && (
+                      <EditStaffDialog
+                        staff={editStaff}
+                        onUpdate={updateStaffTimes}
+                        onClose={() => setEditStaff(null)}
+                      />
+                    )}
+                  </Dialog>
+                )}
 
                 <AlertDialog>
                   <AlertDialogTrigger asChild>
