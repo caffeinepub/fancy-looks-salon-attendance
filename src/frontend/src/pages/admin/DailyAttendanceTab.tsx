@@ -15,7 +15,6 @@ import { Skeleton } from "../../components/ui/skeleton";
 import { useLocalStaff } from "../../hooks/useLocalStaff";
 import {
   getFromAttendanceCache,
-  saveToAttendanceCache,
   useMarkAttendance,
 } from "../../hooks/useQueries";
 
@@ -94,7 +93,6 @@ export function DailyAttendanceTab() {
         isPresent: !currentIsPresent,
       });
       setLocalRecords((prev) => ({ ...prev, [key]: record }));
-      saveToAttendanceCache(staffId, selectedDate, record);
     } catch (err) {
       console.error("Failed to mark attendance:", err);
     } finally {
@@ -120,7 +118,6 @@ export function DailyAttendanceTab() {
             isPresent: true,
           });
           setLocalRecords((prev) => ({ ...prev, [key]: record }));
-          saveToAttendanceCache(s.id, selectedDate, record);
         } catch (err) {
           console.error(err);
         } finally {

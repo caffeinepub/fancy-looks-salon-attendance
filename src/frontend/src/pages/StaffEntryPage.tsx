@@ -148,6 +148,8 @@ export function StaffEntryPage() {
           date: today,
           hour,
           minute,
+          scheduledInHour: Number(selectedStaff.scheduledInTime.hour),
+          scheduledInMinute: Number(selectedStaff.scheduledInTime.minute),
         });
       } else {
         record = await submitOut.mutateAsync({
@@ -155,6 +157,8 @@ export function StaffEntryPage() {
           date: today,
           hour,
           minute,
+          scheduledOutHour: Number(selectedStaff.scheduledOutTime.hour),
+          scheduledOutMinute: Number(selectedStaff.scheduledOutTime.minute),
         });
       }
 
