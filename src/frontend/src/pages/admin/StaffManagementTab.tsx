@@ -32,6 +32,7 @@ import {
 } from "../../components/ui/dialog";
 import { Input } from "../../components/ui/input";
 import { Label } from "../../components/ui/label";
+import { Skeleton } from "../../components/ui/skeleton";
 import type { LocalStaff } from "../../hooks/useLocalStaff";
 import {
   type UpdateStaffTimesParams,
@@ -51,10 +52,12 @@ function EditStaffDialog({
   staff,
   onUpdate,
   onClose,
+  isSaving,
 }: {
   staff: LocalStaff;
-  onUpdate: (params: UpdateStaffTimesParams) => void;
+  onUpdate: (params: UpdateStaffTimesParams) => Promise<void>;
   onClose: () => void;
+  isSaving?: boolean;
 }) {
   const [inTime, setInTime] = useState(
     padTime(
@@ -70,20 +73,27 @@ function EditStaffDialog({
   );
   const [saving, setSaving] = useState(false);
 
-  const handleSave = () => {
+  const handleSave = async () => {
     setSaving(true);
-    const inParsed = parseTimeInput(inTime);
-    const outParsed = parseTimeInput(outTime);
-    onUpdate({
-      staffId: staff.id,
-      inHour: inParsed.hour,
-      inMinute: inParsed.minute,
-      outHour: outParsed.hour,
-      outMinute: outParsed.minute,
-    });
-    setSaving(false);
-    onClose();
+    try {
+      const inParsed = parseTimeInput(inTime);
+      const outParsed = parseTimeInput(outTime);
+      await onUpdate({
+        staffId: staff.id,
+        inHour: inParsed.hour,
+        inMinute: inParsed.minute,
+        outHour: outParsed.hour,
+        outMinute: outParsed.minute,
+      });
+      onClose();
+    } catch (err) {
+      console.error("Failed to update staff times", err);
+    } finally {
+      setSaving(false);
+    }
   };
+
+  const isWorking = saving || isSaving;
 
   return (
     <DialogContent className="sm:max-w-md">
@@ -118,15 +128,15 @@ function EditStaffDialog({
       </div>
 
       <DialogFooter>
-        <Button variant="outline" onClick={onClose}>
+        <Button variant="outline" onClick={onClose} disabled={isWorking}>
           Cancel
         </Button>
         <Button
           onClick={handleSave}
-          disabled={saving}
+          disabled={isWorking}
           className="bg-salon-hero text-white hover:opacity-90"
         >
-          {saving ? (
+          {isWorking ? (
             <span className="flex items-center gap-2">
               <span className="h-3.5 w-3.5 rounded-full border-2 border-white/30 border-t-white animate-spin" />
               Saving...
@@ -141,38 +151,55 @@ function EditStaffDialog({
 }
 
 export function StaffManagementTab() {
-  const { staff, addStaff, removeStaff, updateStaffTimes, togglePremium } =
-    useLocalStaff();
+  const {
+    staff,
+    isLoading,
+    addStaff,
+    removeStaff,
+    updateStaffTimes,
+    togglePremium,
+    isAddingStaff,
+    isRemovingStaff,
+    isUpdatingStaff,
+  } = useLocalStaff();
 
   const [addOpen, setAddOpen] = useState(false);
   const [editStaff, setEditStaff] = useState<LocalStaff | null>(null);
   const [newName, setNewName] = useState("");
   const [newInTime, setNewInTime] = useState("09:00");
   const [newOutTime, setNewOutTime] = useState("18:00");
-  const [isAdding, setIsAdding] = useState(false);
+  const [addError, setAddError] = useState("");
 
-  const handleAddStaff = (e: React.FormEvent) => {
+  const handleAddStaff = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newName.trim()) return;
-    setIsAdding(true);
-    const inParsed = parseTimeInput(newInTime);
-    const outParsed = parseTimeInput(newOutTime);
-    addStaff({
-      name: newName.trim(),
-      inHour: inParsed.hour,
-      inMinute: inParsed.minute,
-      outHour: outParsed.hour,
-      outMinute: outParsed.minute,
-    });
-    setNewName("");
-    setNewInTime("09:00");
-    setNewOutTime("18:00");
-    setIsAdding(false);
-    setAddOpen(false);
+    setAddError("");
+    try {
+      const inParsed = parseTimeInput(newInTime);
+      const outParsed = parseTimeInput(newOutTime);
+      await addStaff({
+        name: newName.trim(),
+        inHour: inParsed.hour,
+        inMinute: inParsed.minute,
+        outHour: outParsed.hour,
+        outMinute: outParsed.minute,
+      });
+      setNewName("");
+      setNewInTime("09:00");
+      setNewOutTime("18:00");
+      setAddOpen(false);
+    } catch (err) {
+      console.error("Failed to add staff", err);
+      setAddError("Failed to add staff. Please try again.");
+    }
   };
 
-  const handleRemove = (staffId: bigint) => {
-    removeStaff(staffId);
+  const handleRemove = async (staffId: bigint) => {
+    try {
+      await removeStaff(staffId);
+    } catch (err) {
+      console.error("Failed to remove staff", err);
+    }
   };
 
   return (
@@ -184,11 +211,17 @@ export function StaffManagementTab() {
             Staff Members
           </h2>
           <p className="text-sm text-muted-foreground mt-0.5">
-            {staff.length} staff registered
+            {isLoading ? "Loading..." : `${staff.length} staff registered`}
           </p>
         </div>
 
-        <Dialog open={addOpen} onOpenChange={setAddOpen}>
+        <Dialog
+          open={addOpen}
+          onOpenChange={(open) => {
+            setAddOpen(open);
+            if (!open) setAddError("");
+          }}
+        >
           <DialogTrigger asChild>
             <Button className="gap-2 bg-salon-hero text-white hover:opacity-90 shadow-salon">
               <UserPlus size={16} />
@@ -252,20 +285,25 @@ export function StaffManagementTab() {
                 </div>
               </div>
 
+              {addError && (
+                <p className="text-sm text-destructive">{addError}</p>
+              )}
+
               <DialogFooter className="pt-2">
                 <Button
                   type="button"
                   variant="outline"
                   onClick={() => setAddOpen(false)}
+                  disabled={isAddingStaff}
                 >
                   Cancel
                 </Button>
                 <Button
                   type="submit"
-                  disabled={isAdding || !newName.trim()}
+                  disabled={isAddingStaff || !newName.trim()}
                   className="bg-salon-hero text-white hover:opacity-90"
                 >
-                  {isAdding ? (
+                  {isAddingStaff ? (
                     <span className="flex items-center gap-2">
                       <span className="h-3.5 w-3.5 rounded-full border-2 border-white/30 border-t-white animate-spin" />
                       Adding...
@@ -284,7 +322,26 @@ export function StaffManagementTab() {
       </div>
 
       {/* Staff List */}
-      {staff.length === 0 ? (
+      {isLoading ? (
+        <div className="space-y-3">
+          {(["sk1", "sk2", "sk3"] as const).map((skKey) => (
+            <div
+              key={skKey}
+              className="flex items-center gap-4 bg-white rounded-xl border border-border p-4"
+            >
+              <Skeleton className="h-11 w-11 rounded-full flex-shrink-0" />
+              <div className="flex-1 space-y-2">
+                <Skeleton className="h-4 w-32" />
+                <Skeleton className="h-3 w-48" />
+              </div>
+              <div className="flex gap-2">
+                <Skeleton className="h-8 w-20" />
+                <Skeleton className="h-8 w-16" />
+              </div>
+            </div>
+          ))}
+        </div>
+      ) : staff.length === 0 ? (
         <div className="bg-white rounded-2xl border border-dashed border-salon-rose-light/60 p-12 text-center">
           <div className="mx-auto mb-4 h-16 w-16 rounded-full bg-salon-rose-light/50 flex items-center justify-center">
             <Users size={28} className="text-salon-rose opacity-60" />
@@ -401,6 +458,7 @@ export function StaffManagementTab() {
                         staff={editStaff}
                         onUpdate={updateStaffTimes}
                         onClose={() => setEditStaff(null)}
+                        isSaving={isUpdatingStaff}
                       />
                     )}
                   </Dialog>
@@ -411,6 +469,7 @@ export function StaffManagementTab() {
                     <Button
                       size="sm"
                       variant="ghost"
+                      disabled={isRemovingStaff}
                       className="gap-1.5 text-muted-foreground hover:text-destructive hover:bg-destructive/10 h-8"
                     >
                       <Trash2 size={13} />

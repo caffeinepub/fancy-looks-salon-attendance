@@ -14,13 +14,6 @@ export const UserRole = IDL.Variant({
   'guest' : IDL.Null,
 });
 export const TimeOfDay = IDL.Record({ 'hour' : IDL.Nat, 'minute' : IDL.Nat });
-export const Staff = IDL.Record({
-  'id' : IDL.Nat,
-  'scheduledInTime' : TimeOfDay,
-  'name' : IDL.Text,
-  'scheduledOutTime' : TimeOfDay,
-});
-export const UserProfile = IDL.Record({ 'name' : IDL.Text });
 export const AttendanceRecord = IDL.Record({
   'lateMinutesIn' : IDL.Nat,
   'isPresent' : IDL.Bool,
@@ -31,6 +24,13 @@ export const AttendanceRecord = IDL.Record({
   'actualOutTime' : IDL.Opt(TimeOfDay),
   'lateMinutesOut' : IDL.Nat,
 });
+export const Staff = IDL.Record({
+  'id' : IDL.Nat,
+  'scheduledInTime' : TimeOfDay,
+  'name' : IDL.Text,
+  'scheduledOutTime' : TimeOfDay,
+});
+export const UserProfile = IDL.Record({ 'name' : IDL.Text });
 
 export const idlService = IDL.Service({
   '_initializeAccessControlWithSecret' : IDL.Func([IDL.Text], [], []),
@@ -40,10 +40,25 @@ export const idlService = IDL.Service({
       [],
     ),
   'assignCallerUserRole' : IDL.Func([IDL.Principal, UserRole], [], []),
+  'getAllMonthlyAttendance' : IDL.Func(
+      [IDL.Text],
+      [IDL.Vec(IDL.Tuple(IDL.Nat, IDL.Vec(AttendanceRecord)))],
+      ['query'],
+    ),
   'getAllStaff' : IDL.Func([], [IDL.Vec(Staff)], ['query']),
+  'getAttendance' : IDL.Func(
+      [IDL.Nat, IDL.Text],
+      [IDL.Opt(AttendanceRecord)],
+      ['query'],
+    ),
   'getCallerUserProfile' : IDL.Func([], [IDL.Opt(UserProfile)], ['query']),
   'getCallerUserRole' : IDL.Func([], [UserRole], ['query']),
   'getCurrentTime' : IDL.Func([], [TimeOfDay], ['query']),
+  'getMonthlyAttendanceForStaff' : IDL.Func(
+      [IDL.Nat, IDL.Text],
+      [IDL.Vec(AttendanceRecord)],
+      ['query'],
+    ),
   'getUserProfile' : IDL.Func(
       [IDL.Principal],
       [IDL.Opt(UserProfile)],
@@ -83,13 +98,6 @@ export const idlFactory = ({ IDL }) => {
     'guest' : IDL.Null,
   });
   const TimeOfDay = IDL.Record({ 'hour' : IDL.Nat, 'minute' : IDL.Nat });
-  const Staff = IDL.Record({
-    'id' : IDL.Nat,
-    'scheduledInTime' : TimeOfDay,
-    'name' : IDL.Text,
-    'scheduledOutTime' : TimeOfDay,
-  });
-  const UserProfile = IDL.Record({ 'name' : IDL.Text });
   const AttendanceRecord = IDL.Record({
     'lateMinutesIn' : IDL.Nat,
     'isPresent' : IDL.Bool,
@@ -100,6 +108,13 @@ export const idlFactory = ({ IDL }) => {
     'actualOutTime' : IDL.Opt(TimeOfDay),
     'lateMinutesOut' : IDL.Nat,
   });
+  const Staff = IDL.Record({
+    'id' : IDL.Nat,
+    'scheduledInTime' : TimeOfDay,
+    'name' : IDL.Text,
+    'scheduledOutTime' : TimeOfDay,
+  });
+  const UserProfile = IDL.Record({ 'name' : IDL.Text });
   
   return IDL.Service({
     '_initializeAccessControlWithSecret' : IDL.Func([IDL.Text], [], []),
@@ -109,10 +124,25 @@ export const idlFactory = ({ IDL }) => {
         [],
       ),
     'assignCallerUserRole' : IDL.Func([IDL.Principal, UserRole], [], []),
+    'getAllMonthlyAttendance' : IDL.Func(
+        [IDL.Text],
+        [IDL.Vec(IDL.Tuple(IDL.Nat, IDL.Vec(AttendanceRecord)))],
+        ['query'],
+      ),
     'getAllStaff' : IDL.Func([], [IDL.Vec(Staff)], ['query']),
+    'getAttendance' : IDL.Func(
+        [IDL.Nat, IDL.Text],
+        [IDL.Opt(AttendanceRecord)],
+        ['query'],
+      ),
     'getCallerUserProfile' : IDL.Func([], [IDL.Opt(UserProfile)], ['query']),
     'getCallerUserRole' : IDL.Func([], [UserRole], ['query']),
     'getCurrentTime' : IDL.Func([], [TimeOfDay], ['query']),
+    'getMonthlyAttendanceForStaff' : IDL.Func(
+        [IDL.Nat, IDL.Text],
+        [IDL.Vec(AttendanceRecord)],
+        ['query'],
+      ),
     'getUserProfile' : IDL.Func(
         [IDL.Principal],
         [IDL.Opt(UserProfile)],

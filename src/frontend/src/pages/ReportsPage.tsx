@@ -4,13 +4,12 @@ import {
   Calendar,
   CheckCircle2,
   Clock,
-  Download,
+  Loader2,
   Scissors,
   Users,
   XCircle,
 } from "lucide-react";
 import { useState } from "react";
-import type { AttendanceRecord } from "../backend.d";
 import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
 import {
@@ -29,8 +28,9 @@ import {
 } from "../components/ui/tabs";
 import { useLocalStaff } from "../hooks/useLocalStaff";
 import {
-  getAllMonthlyAttendance,
-  getMonthlyAttendanceForStaff,
+  useGetAllMonthlyAttendance,
+  useGetMonthlyAttendanceForStaff,
+  useMarkAttendance,
 } from "../hooks/useQueries";
 
 const MONTHS = [
@@ -70,6 +70,8 @@ function IndividualReport() {
   const [selectedStaffId, setSelectedStaffId] = useState<string>("");
   const [month, setMonth] = useState(today.getMonth() + 1);
   const [year, setYear] = useState(today.getFullYear());
+  const [markingDates, setMarkingDates] = useState<Set<string>>(new Set());
+  const markAttendance = useMarkAttendance();
 
   const yearOptions = [
     today.getFullYear() - 1,
@@ -79,15 +81,46 @@ function IndividualReport() {
 
   const selectedStaff = staff?.find((s) => String(s.id) === selectedStaffId);
 
-  const attendanceData = selectedStaffId
-    ? getMonthlyAttendanceForStaff(BigInt(selectedStaffId), year, month)
-    : {};
+  // Build yearMonth string for query
+  const yearMonth = `${year}-${String(month).padStart(2, "0")}`;
+
+  // Fetch monthly attendance from backend
+  const { data: monthlyRecords = [], isLoading: recordsLoading } =
+    useGetMonthlyAttendanceForStaff(
+      selectedStaffId ? BigInt(selectedStaffId) : null,
+      yearMonth,
+    );
+
+  // Build a date → record map from backend data
+  const attendanceByDate = Object.fromEntries(
+    monthlyRecords.map((r) => [r.date, r]),
+  );
+
+  async function handleMarkStatus(dateStr: string, markAsPresent: boolean) {
+    if (!selectedStaffId) return;
+    setMarkingDates((prev) => new Set(prev).add(dateStr));
+    try {
+      await markAttendance.mutateAsync({
+        staffId: BigInt(selectedStaffId),
+        date: dateStr,
+        isPresent: markAsPresent,
+      });
+    } catch (e) {
+      console.error("Failed to mark attendance", e);
+    } finally {
+      setMarkingDates((prev) => {
+        const next = new Set(prev);
+        next.delete(dateStr);
+        return next;
+      });
+    }
+  }
 
   const daysInMonth = getDaysInMonth(year, month);
   const rows = Array.from({ length: daysInMonth }, (_, i) => {
     const day = i + 1;
     const dateStr = `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
-    const record: AttendanceRecord | undefined = attendanceData[dateStr];
+    const record = attendanceByDate[dateStr];
     return { day, dateStr, record };
   });
 
@@ -121,7 +154,7 @@ function IndividualReport() {
                 <SelectTrigger className="h-10">
                   <SelectValue placeholder="Select staff..." />
                 </SelectTrigger>
-                <SelectContent>
+                <SelectContent className="max-h-60 overflow-y-auto">
                   {staff?.map((s) => (
                     <SelectItem key={String(s.id)} value={String(s.id)}>
                       {s.name}
@@ -254,127 +287,167 @@ function IndividualReport() {
 
           {/* Table */}
           <div className="bg-white rounded-xl border border-border shadow-xs overflow-hidden">
-            <div className="overflow-x-auto">
-              <table className="salon-table">
-                <thead>
-                  <tr>
-                    <th className="text-left">Date</th>
-                    <th className="text-left">Day</th>
-                    <th className="text-center">Status</th>
-                    <th className="text-center">In Time</th>
-                    <th className="text-center">Out Time</th>
-                    <th className="text-center">Late In</th>
-                    <th className="text-center">Late Out</th>
-                    <th className="text-center">Late Mins</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {rows.map(({ day, dateStr, record }) => {
-                    const isLateRow = record?.lateForIn || record?.lateForOut;
-                    return (
-                      <tr key={dateStr} className={isLateRow ? "row-late" : ""}>
-                        <td className="font-medium text-sm">
-                          {String(day).padStart(2, "0")}
-                        </td>
-                        <td className="text-sm text-muted-foreground">
-                          {getDayName(dateStr)}
-                        </td>
-                        <td className="text-center">
-                          {!record ? (
-                            <span className="text-xs text-muted-foreground">
-                              —
-                            </span>
-                          ) : record.isPresent ? (
-                            <span className="pill-present">Present</span>
-                          ) : (
-                            <span className="pill-absent">Absent</span>
-                          )}
-                        </td>
-                        <td className="text-center text-sm">
-                          {record?.actualInTime ? (
-                            <span
-                              className={
-                                record.lateForIn
-                                  ? "text-late-text font-semibold"
-                                  : "text-foreground"
-                              }
-                            >
-                              {padTime(
-                                Number(record.actualInTime.hour),
-                                Number(record.actualInTime.minute),
-                              )}
-                            </span>
-                          ) : (
-                            <span className="text-muted-foreground text-xs">
-                              —
-                            </span>
-                          )}
-                        </td>
-                        <td className="text-center text-sm">
-                          {record?.actualOutTime ? (
-                            <span
-                              className={
-                                record.lateForOut
-                                  ? "text-late-text font-semibold"
-                                  : "text-foreground"
-                              }
-                            >
-                              {padTime(
-                                Number(record.actualOutTime.hour),
-                                Number(record.actualOutTime.minute),
-                              )}
-                            </span>
-                          ) : (
-                            <span className="text-muted-foreground text-xs">
-                              —
-                            </span>
-                          )}
-                        </td>
-                        <td className="text-center">
-                          {record?.lateForIn ? (
-                            <CheckCircle2
-                              size={14}
-                              className="text-late-text mx-auto"
-                            />
-                          ) : (
-                            <XCircle
-                              size={14}
-                              className="text-muted-foreground/30 mx-auto"
-                            />
-                          )}
-                        </td>
-                        <td className="text-center">
-                          {record?.lateForOut ? (
-                            <CheckCircle2
-                              size={14}
-                              className="text-late-text mx-auto"
-                            />
-                          ) : (
-                            <XCircle
-                              size={14}
-                              className="text-muted-foreground/30 mx-auto"
-                            />
-                          )}
-                        </td>
-                        <td className="text-center text-sm">
-                          {record && (record.lateForIn || record.lateForOut) ? (
-                            <span className="pill-late">
-                              {Number(record.lateMinutesIn) +
-                                Number(record.lateMinutesOut)}
-                              m
-                            </span>
-                          ) : (
-                            <span className="text-muted-foreground text-xs">
-                              —
-                            </span>
-                          )}
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
+            {recordsLoading ? (
+              <div className="p-6 space-y-2">
+                {[1, 2, 3, 4, 5].map((i) => (
+                  <Skeleton key={i} className="h-10 w-full rounded-lg" />
+                ))}
+              </div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="salon-table">
+                  <thead>
+                    <tr>
+                      <th className="text-left">Date</th>
+                      <th className="text-left">Day</th>
+                      <th className="text-center">Status</th>
+                      <th className="text-center">In Time</th>
+                      <th className="text-center">Out Time</th>
+                      <th className="text-center">Late In</th>
+                      <th className="text-center">Late Out</th>
+                      <th className="text-center">Late Mins</th>
+                      <th className="text-center">Action</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {rows.map(({ day, dateStr, record }) => {
+                      const isLateRow = record?.lateForIn || record?.lateForOut;
+                      const isMarking = markingDates.has(dateStr);
+                      return (
+                        <tr
+                          key={dateStr}
+                          className={isLateRow ? "row-late" : ""}
+                        >
+                          <td className="font-medium text-sm">
+                            {String(day).padStart(2, "0")}
+                          </td>
+                          <td className="text-sm text-muted-foreground">
+                            {getDayName(dateStr)}
+                          </td>
+                          <td className="text-center">
+                            {!record ? (
+                              <span className="text-xs text-muted-foreground">
+                                —
+                              </span>
+                            ) : record.isPresent ? (
+                              <span className="pill-present">Present</span>
+                            ) : (
+                              <span className="pill-absent">Absent</span>
+                            )}
+                          </td>
+                          <td className="text-center text-sm">
+                            {record?.actualInTime ? (
+                              <span
+                                className={
+                                  record.lateForIn
+                                    ? "text-late-text font-semibold"
+                                    : "text-foreground"
+                                }
+                              >
+                                {padTime(
+                                  Number(record.actualInTime.hour),
+                                  Number(record.actualInTime.minute),
+                                )}
+                              </span>
+                            ) : (
+                              <span className="text-muted-foreground text-xs">
+                                —
+                              </span>
+                            )}
+                          </td>
+                          <td className="text-center text-sm">
+                            {record?.actualOutTime ? (
+                              <span
+                                className={
+                                  record.lateForOut
+                                    ? "text-late-text font-semibold"
+                                    : "text-foreground"
+                                }
+                              >
+                                {padTime(
+                                  Number(record.actualOutTime.hour),
+                                  Number(record.actualOutTime.minute),
+                                )}
+                              </span>
+                            ) : (
+                              <span className="text-muted-foreground text-xs">
+                                —
+                              </span>
+                            )}
+                          </td>
+                          <td className="text-center">
+                            {record?.lateForIn ? (
+                              <CheckCircle2
+                                size={14}
+                                className="text-late-text mx-auto"
+                              />
+                            ) : (
+                              <XCircle
+                                size={14}
+                                className="text-muted-foreground/30 mx-auto"
+                              />
+                            )}
+                          </td>
+                          <td className="text-center">
+                            {record?.lateForOut ? (
+                              <CheckCircle2
+                                size={14}
+                                className="text-late-text mx-auto"
+                              />
+                            ) : (
+                              <XCircle
+                                size={14}
+                                className="text-muted-foreground/30 mx-auto"
+                              />
+                            )}
+                          </td>
+                          <td className="text-center text-sm">
+                            {record &&
+                            (record.lateForIn || record.lateForOut) ? (
+                              <span className="pill-late">
+                                {Number(record.lateMinutesIn) +
+                                  Number(record.lateMinutesOut)}
+                                m
+                              </span>
+                            ) : (
+                              <span className="text-muted-foreground text-xs">
+                                —
+                              </span>
+                            )}
+                          </td>
+                          <td className="text-center">
+                            {isMarking ? (
+                              <Loader2
+                                size={14}
+                                className="animate-spin mx-auto text-muted-foreground"
+                              />
+                            ) : !record || !record.isPresent ? (
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                className="h-6 px-2 text-xs border-green-400 text-green-700 hover:bg-green-50 hover:text-green-800"
+                                onClick={() => handleMarkStatus(dateStr, true)}
+                              >
+                                Mark Present
+                              </Button>
+                            ) : (
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                className="h-6 px-2 text-xs border-red-300 text-red-600 hover:bg-red-50 hover:text-red-700"
+                                onClick={() => handleMarkStatus(dateStr, false)}
+                              >
+                                Mark Absent
+                              </Button>
+                            )}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
 
             {/* Summary Footer */}
             <div className="border-t border-border bg-muted/30 px-4 py-3">
@@ -420,12 +493,19 @@ function AllStaffSummary() {
     today.getFullYear() + 1,
   ];
 
-  // Aggregate from cache
-  const allData = getAllMonthlyAttendance(year, month);
+  const yearMonth = `${year}-${String(month).padStart(2, "0")}`;
+
+  // Fetch all staff monthly attendance from backend
+  const { data: allMonthlyData = [], isLoading: dataLoading } =
+    useGetAllMonthlyAttendance(yearMonth);
+
+  // Build a map: staffId string → records
+  const allDataMap = Object.fromEntries(
+    allMonthlyData.map(([sid, records]) => [String(sid), records]),
+  );
 
   const staffSummaries = (staff || []).map((s) => {
-    const staffData = allData[String(s.id)] || {};
-    const records = Object.values(staffData);
+    const records = allDataMap[String(s.id)] ?? [];
     const totalPresent = records.filter((r) => r.isPresent).length;
     const totalLateIn = records.filter((r) => r.lateForIn).length;
     const totalLateOut = records.filter((r) => r.lateForOut).length;
@@ -505,7 +585,7 @@ function AllStaffSummary() {
         </div>
       </div>
 
-      {isLoading ? (
+      {isLoading || dataLoading ? (
         <div className="space-y-3">
           {[1, 2, 3].map((i) => (
             <Skeleton key={i} className="h-14 w-full rounded-xl" />

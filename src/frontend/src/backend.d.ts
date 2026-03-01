@@ -38,10 +38,13 @@ export enum UserRole {
 export interface backendInterface {
     addStaff(name: string, scheduledInHour: bigint, scheduledInMinute: bigint, scheduledOutHour: bigint, scheduledOutMinute: bigint): Promise<bigint>;
     assignCallerUserRole(user: Principal, role: UserRole): Promise<void>;
+    getAllMonthlyAttendance(yearMonth: string): Promise<Array<[bigint, Array<AttendanceRecord>]>>;
     getAllStaff(): Promise<Array<Staff>>;
+    getAttendance(staffId: bigint, date: string): Promise<AttendanceRecord | null>;
     getCallerUserProfile(): Promise<UserProfile | null>;
     getCallerUserRole(): Promise<UserRole>;
     getCurrentTime(): Promise<TimeOfDay>;
+    getMonthlyAttendanceForStaff(staffId: bigint, yearMonth: string): Promise<Array<AttendanceRecord>>;
     getUserProfile(user: Principal): Promise<UserProfile | null>;
     isCallerAdmin(): Promise<boolean>;
     markAttendance(staffId: bigint, date: string, isPresent: boolean): Promise<AttendanceRecord>;

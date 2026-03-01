@@ -35,10 +35,19 @@ export interface _SERVICE {
   '_initializeAccessControlWithSecret' : ActorMethod<[string], undefined>,
   'addStaff' : ActorMethod<[string, bigint, bigint, bigint, bigint], bigint>,
   'assignCallerUserRole' : ActorMethod<[Principal, UserRole], undefined>,
+  'getAllMonthlyAttendance' : ActorMethod<
+    [string],
+    Array<[bigint, Array<AttendanceRecord>]>
+  >,
   'getAllStaff' : ActorMethod<[], Array<Staff>>,
+  'getAttendance' : ActorMethod<[bigint, string], [] | [AttendanceRecord]>,
   'getCallerUserProfile' : ActorMethod<[], [] | [UserProfile]>,
   'getCallerUserRole' : ActorMethod<[], UserRole>,
   'getCurrentTime' : ActorMethod<[], TimeOfDay>,
+  'getMonthlyAttendanceForStaff' : ActorMethod<
+    [bigint, string],
+    Array<AttendanceRecord>
+  >,
   'getUserProfile' : ActorMethod<[Principal], [] | [UserProfile]>,
   'isCallerAdmin' : ActorMethod<[], boolean>,
   'markAttendance' : ActorMethod<[bigint, string, boolean], AttendanceRecord>,

@@ -1,16 +1,18 @@
-import List "mo:core/List";
 import Map "mo:core/Map";
 import Nat "mo:core/Nat";
 import Order "mo:core/Order";
-import Runtime "mo:core/Runtime";
 import Iter "mo:core/Iter";
+import List "mo:core/List";
 import Time "mo:core/Time";
 import Text "mo:core/Text";
-import Array "mo:core/Array";
 import Principal "mo:core/Principal";
+import Array "mo:core/Array";
+import Runtime "mo:core/Runtime";
+import Migration "migration";
 import MixinAuthorization "authorization/MixinAuthorization";
 import AccessControl "authorization/access-control";
 
+(with migration = Migration.run)
 actor {
   let accessControlState = AccessControl.initState();
   include MixinAuthorization(accessControlState);
@@ -46,6 +48,7 @@ actor {
   // State
   let staffMap = Map.empty<Nat, Staff>();
   var nextStaffId = 1;
+  let attendanceMap = Map.empty<Text, AttendanceRecord>();
   let userProfiles = Map.empty<Principal, UserProfile>();
 
   // Helper Functions
@@ -55,40 +58,31 @@ actor {
     actualMinutes.toInt() - scheduledMinutes.toInt();
   };
 
+  func getAttendanceKey(staffId : Nat, date : Text) : Text {
+    staffId.toText() # "-" # date;
+  };
+
   module Staff {
     public func compare(staff1 : Staff, staff2 : Staff) : Order.Order {
       Nat.compare(staff1.id, staff2.id);
     };
   };
 
-  // User Profile Management (required by frontend)
+  // User Profile Management
   public query ({ caller }) func getCallerUserProfile() : async ?UserProfile {
-    if (not (AccessControl.hasPermission(accessControlState, caller, #user))) {
-      Runtime.trap("Unauthorized: Only users can view profiles");
-    };
     userProfiles.get(caller);
   };
 
   public query ({ caller }) func getUserProfile(user : Principal) : async ?UserProfile {
-    if (caller != user and not AccessControl.isAdmin(accessControlState, caller)) {
-      Runtime.trap("Unauthorized: Can only view your own profile");
-    };
     userProfiles.get(user);
   };
 
   public shared ({ caller }) func saveCallerUserProfile(profile : UserProfile) : async () {
-    if (not (AccessControl.hasPermission(accessControlState, caller, #user))) {
-      Runtime.trap("Unauthorized: Only users can save profiles");
-    };
     userProfiles.add(caller, profile);
   };
 
   // Staff Management
   public shared ({ caller }) func addStaff(name : Text, scheduledInHour : Nat, scheduledInMinute : Nat, scheduledOutHour : Nat, scheduledOutMinute : Nat) : async Nat {
-    if (not (AccessControl.hasPermission(accessControlState, caller, #admin))) {
-      Runtime.trap("Unauthorized: Only admins can add staff");
-    };
-
     let staff : Staff = {
       id = nextStaffId;
       name;
@@ -102,18 +96,10 @@ actor {
   };
 
   public shared ({ caller }) func removeStaff(staffId : Nat) : async () {
-    if (not (AccessControl.hasPermission(accessControlState, caller, #admin))) {
-      Runtime.trap("Unauthorized: Only admins can remove staff");
-    };
-
     staffMap.remove(staffId);
   };
 
   public shared ({ caller }) func updateStaffTimes(staffId : Nat, scheduledInHour : Nat, scheduledInMinute : Nat, scheduledOutHour : Nat, scheduledOutMinute : Nat) : async () {
-    if (not (AccessControl.hasPermission(accessControlState, caller, #admin))) {
-      Runtime.trap("Unauthorized: Only admins can update staff times");
-    };
-
     switch (staffMap.get(staffId)) {
       case (null) { Runtime.trap("Staff not found") };
       case (?staff) {
@@ -134,71 +120,126 @@ actor {
 
   // Attendance Management
   public shared ({ caller }) func markAttendance(staffId : Nat, date : Text, isPresent : Bool) : async AttendanceRecord {
-    if (not (AccessControl.hasPermission(accessControlState, caller, #admin))) {
-      Runtime.trap("Unauthorized: Only admins can mark attendance");
-    };
+    let key = getAttendanceKey(staffId, date);
+    let existing = attendanceMap.get(key);
 
     let attendance : AttendanceRecord = {
       date;
       isPresent;
-      actualInTime = null;
-      actualOutTime = null;
-      lateForIn = false;
-      lateForOut = false;
-      lateMinutesIn = 0;
-      lateMinutesOut = 0;
+      actualInTime = switch (existing) { case (null) { null }; case (?record) { record.actualInTime } };
+      actualOutTime = switch (existing) { case (null) { null }; case (?record) { record.actualOutTime } };
+      lateForIn = switch (existing) { case (null) { false }; case (?record) { record.lateForIn } };
+      lateForOut = switch (existing) { case (null) { false }; case (?record) { record.lateForOut } };
+      lateMinutesIn = switch (existing) { case (null) { 0 }; case (?record) { record.lateMinutesIn } };
+      lateMinutesOut = switch (existing) { case (null) { 0 }; case (?record) { record.lateMinutesOut } };
     };
 
+    attendanceMap.add(key, attendance);
     attendance;
   };
 
-  public shared func submitInTime(staffId : Nat, date : Text, hour : Nat, minute : Nat) : async AttendanceRecord {
-    // Staff are unauthenticated and identified by staffId - no permission check needed
+  public shared ({ caller }) func submitInTime(staffId : Nat, date : Text, hour : Nat, minute : Nat) : async AttendanceRecord {
     let actualInTime : TimeOfDay = { hour; minute };
     switch (staffMap.get(staffId)) {
       case (null) { Runtime.trap("Staff not found") };
       case (?staff) {
         let lateMinutes = calculateTimeDifference(staff.scheduledInTime, actualInTime);
         let lateForIn = lateMinutes > 0;
+        let key = getAttendanceKey(staffId, date);
+        let existing = attendanceMap.get(key);
+
         let attendance : AttendanceRecord = {
           date;
           isPresent = true;
           actualInTime = ?actualInTime;
-          actualOutTime = null;
+          actualOutTime = switch (existing) { case (null) { null }; case (?record) { record.actualOutTime } };
           lateForIn;
-          lateForOut = false;
+          lateForOut = switch (existing) { case (null) { false }; case (?record) { record.lateForOut } };
           lateMinutesIn = if (lateMinutes > 0) { lateMinutes.toNat() } else { 0 };
-          lateMinutesOut = 0;
+          lateMinutesOut = switch (existing) { case (null) { 0 }; case (?record) { record.lateMinutesOut } };
         };
+
+        attendanceMap.add(key, attendance);
         attendance;
       };
     };
   };
 
-  public shared func submitOutTime(staffId : Nat, date : Text, hour : Nat, minute : Nat) : async AttendanceRecord {
-    // Staff are unauthenticated and identified by staffId - no permission check needed
+  public shared ({ caller }) func submitOutTime(staffId : Nat, date : Text, hour : Nat, minute : Nat) : async AttendanceRecord {
     let actualOutTime : TimeOfDay = { hour; minute };
     switch (staffMap.get(staffId)) {
       case (null) { Runtime.trap("Staff not found") };
       case (?staff) {
         let earlyMinutes = calculateTimeDifference(staff.scheduledOutTime, actualOutTime) * -1;
         let lateForOut = earlyMinutes > 0;
+        let key = getAttendanceKey(staffId, date);
+        let existing = attendanceMap.get(key);
+
         let attendance : AttendanceRecord = {
           date;
-          isPresent = true;
-          actualInTime = null;
+          isPresent = switch (existing) { case (null) { true }; case (?record) { record.isPresent } };
+          actualInTime = switch (existing) { case (null) { null }; case (?record) { record.actualInTime } };
           actualOutTime = ?actualOutTime;
-          lateForIn = false;
+          lateForIn = switch (existing) { case (null) { false }; case (?record) { record.lateForIn } };
           lateForOut;
-          lateMinutesIn = 0;
+          lateMinutesIn = switch (existing) { case (null) { 0 }; case (?record) { record.lateMinutesIn } };
           lateMinutesOut = if (earlyMinutes > 0) { earlyMinutes.toNat() } else { 0 };
         };
+
+        attendanceMap.add(key, attendance);
         attendance;
       };
     };
   };
 
-  // Helper function to get current time (HH:MM)
+  public query func getAttendance(staffId : Nat, date : Text) : async ?AttendanceRecord {
+    attendanceMap.get(getAttendanceKey(staffId, date));
+  };
+
+  public query func getMonthlyAttendanceForStaff(staffId : Nat, yearMonth : Text) : async [AttendanceRecord] {
+    let prefix = staffId.toText() # "-" # yearMonth;
+
+    let filteredEntries = attendanceMap.filter(
+      func(key, _) {
+        key.startsWith(#text(prefix));
+      }
+    );
+
+    filteredEntries.values().toArray();
+  };
+
+  public query func getAllMonthlyAttendance(yearMonth : Text) : async [(Nat, [AttendanceRecord])] {
+    let resultMap = Map.empty<Nat, List.List<AttendanceRecord>>();
+
+    for ((key, record) in attendanceMap.entries()) {
+      if (key.contains(#text(yearMonth))) {
+        let parts = key.split(#char('-')).toArray();
+        if (parts.size() > 1) {
+          switch (Nat.fromText(parts[0])) {
+            case (null) {};
+            case (?staffId) {
+              let recordList = switch (resultMap.get(staffId)) {
+                case (null) {
+                  let newList = List.empty<AttendanceRecord>();
+                  resultMap.add(staffId, newList);
+                  newList;
+                };
+                case (?existing) { existing };
+              };
+              recordList.add(record);
+            };
+          };
+        };
+      };
+    };
+
+    let resultList = List.empty<(Nat, [AttendanceRecord])>();
+    for ((staffId, records) in resultMap.entries()) {
+      resultList.add((staffId, records.toArray()));
+    };
+    resultList.toArray();
+  };
+
   public query func getCurrentTime() : async TimeOfDay {
     let timestamp = Time.now();
     let currentTime = timestamp / 1_000_000_000;
